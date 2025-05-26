@@ -14,5 +14,11 @@
   "type": "module",
   "workspaces": [
     "src/magreste_labs_frontend"
-  ]
+  ],
+  "dependencies": {
+    "react-router-dom": "^7.6.0"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
 }
