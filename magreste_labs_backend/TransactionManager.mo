@@ -19,7 +19,7 @@ module {
     public class TransactionManager() {
         
         // ========== ESTADO PRIVADO ==========
-        private var transactions = HashMap.HashMap<Types.TransactionId, Types.Transaction>(100, Nat.equal, Hash.hash);
+        private var transactions = HashMap.HashMap<Types.TransactionId, Types.TransactionRecord>(100, Nat.equal, Hash.hash);
         private var userTransactions = HashMap.HashMap<Types.UserId, [Types.TransactionId]>(50, Principal.equal, Principal.hash);
         private var propertyTransactions = HashMap.HashMap<Types.PropertyId, [Types.TransactionId]>(20, Nat.equal, Hash.hash);
         private var nextTransactionId: Types.TransactionId = 1;
@@ -40,7 +40,7 @@ module {
         ) : Result.Result<Types.TransactionId, Types.SystemError> {
             
             let fees = calculateTransactionFees(totalAmount);
-            let transaction: Types.Transaction = {
+            let transaction: Types.TransactionRecord = {
                 id = nextTransactionId;
                 transactionType = #Mint;
                 propertyId = propertyId;
@@ -76,7 +76,7 @@ module {
             };
             
             let fees = calculateTransactionFees(totalAmount);
-            let transaction: Types.Transaction = {
+            let transaction: Types.TransactionRecord = {
                 id = nextTransactionId;
                 transactionType = #Purchase;
                 propertyId = propertyId;
@@ -109,7 +109,7 @@ module {
         ) : Result.Result<Types.TransactionId, Types.SystemError> {
             
             let fees = calculateTransactionFees(price);
-            let transaction: Types.Transaction = {
+            let transaction: Types.TransactionRecord = {
                 id = nextTransactionId;
                 transactionType = #Transfer;
                 propertyId = propertyId;
@@ -140,7 +140,7 @@ module {
             user: Types.UserId
         ) : Result.Result<Types.TransactionId, Types.SystemError> {
             
-            let transaction: Types.Transaction = {
+            let transaction: Types.TransactionRecord = {
                 id = nextTransactionId;
                 transactionType = #UtilityGeneration;
                 propertyId = propertyId;
@@ -170,7 +170,7 @@ module {
             user: Types.UserId,
             page: ?Nat,
             pageSize: ?Nat
-        ) : Result.Result<[Types.Transaction], Types.SystemError> {
+        ) : Result.Result<[Types.TransactionRecord], Types.SystemError> {
             
             let currentPage = Option.get(page, 0);
             let currentPageSize = Option.get(pageSize, 10);
@@ -178,7 +178,7 @@ module {
             switch (userTransactions.get(user)) {
                 case null { #ok([]) };
                 case (?transactionIds) {
-                    let buffer = Buffer.Buffer<Types.Transaction>(transactionIds.size());
+                    let buffer = Buffer.Buffer<Types.TransactionRecord>(transactionIds.size());
                     
                     for (transactionId in transactionIds.vals()) {
                         switch (transactions.get(transactionId)) {
@@ -196,7 +196,7 @@ module {
                     if (startIndex >= allTransactions.size()) {
                         #ok([])
                     } else {
-                        let pageTransactions = Array.tabulate<Types.Transaction>(
+                        let pageTransactions = Array.tabulate<Types.TransactionRecord>(
                             endIndex - startIndex,
                             func(i) = allTransactions[startIndex + i]
                         );
@@ -211,7 +211,7 @@ module {
             propertyId: Types.PropertyId,
             page: ?Nat,
             pageSize: ?Nat
-        ) : Result.Result<[Types.Transaction], Types.SystemError> {
+        ) : Result.Result<[Types.TransactionRecord], Types.SystemError> {
             
             let currentPage = Option.get(page, 0);
             let currentPageSize = Option.get(pageSize, 10);
@@ -219,7 +219,7 @@ module {
             switch (propertyTransactions.get(propertyId)) {
                 case null { #ok([]) };
                 case (?transactionIds) {
-                    let buffer = Buffer.Buffer<Types.Transaction>(transactionIds.size());
+                    let buffer = Buffer.Buffer<Types.TransactionRecord>(transactionIds.size());
                     
                     for (transactionId in transactionIds.vals()) {
                         switch (transactions.get(transactionId)) {
@@ -237,7 +237,7 @@ module {
                     if (startIndex >= allTransactions.size()) {
                         #ok([])
                     } else {
-                        let pageTransactions = Array.tabulate<Types.Transaction>(
+                        let pageTransactions = Array.tabulate<Types.TransactionRecord>(
                             endIndex - startIndex,
                             func(i) = allTransactions[startIndex + i]
                         );
@@ -248,7 +248,7 @@ module {
         };
         
         // Obtener una transacción específica
-        public func getTransaction(transactionId: Types.TransactionId) : ?Types.Transaction {
+        public func getTransaction(transactionId: Types.TransactionId) : ?Types.TransactionRecord {
             transactions.get(transactionId)
         };
         
@@ -325,9 +325,9 @@ module {
         };
         
         // Obtener transacciones recientes
-        public func getRecentTransactions(limit: ?Nat) : [Types.Transaction] {
+        public func getRecentTransactions(limit: ?Nat) : [Types.TransactionRecord] {
             let maxLimit = Option.get(limit, 20);
-            let buffer = Buffer.Buffer<Types.Transaction>(maxLimit);
+            let buffer = Buffer.Buffer<Types.TransactionRecord>(maxLimit);
             
             // Obtener las transacciones más recientes
             var currentId = nextTransactionId;
