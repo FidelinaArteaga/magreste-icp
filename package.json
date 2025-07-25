@@ -1,24 +1,33 @@
 {
-  "engines": {
-    "node": ">=16.0.0",
-    "npm": ">=7.0.0"
+  "canisters": {
+    "magreste_labs_backend": {
+      "main": "src/magreste_labs_backend/main.mo",
+      "type": "motoko"
+    },
+    "frontend": {
+      "dependencies": [
+        "magreste_labs_backend"
+      ],
+      "source": [
+        "src/frontend/dist"
+      ],
+      "type": "assets"
+    }
   },
-  "name": "magreste_labs",
-  "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "prebuild": "npm run prebuild --workspaces --if-present",
-    "pretest": "npm run prebuild --workspaces --if-present",
-    "start": "npm start --workspaces --if-present",
-    "test": "npm test --workspaces --if-present"
+  "defaults": {
+    "build": {
+      "packtool": ""
+    }
   },
-  "type": "module",
-  "workspaces": [
-    "src/magreste_labs_frontend"
-  ],
-  "dependencies": {
-    "react-router-dom": "^7.6.0"
-  },
+  "version": 1,
   "devDependencies": {
+    "prettier": "^3.0.0-alpha.6"
+  },
+  "dependencies": {
+    "@dfinity/agent": "^2.4.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.1",
     "vite": "^6.3.5"
   }
 }
