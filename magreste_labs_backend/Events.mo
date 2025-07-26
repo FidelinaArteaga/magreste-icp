@@ -10,6 +10,7 @@ import HashMap "mo:base/HashMap";
 import Nat "mo:base/Nat";
 import Text "mo:base/Text";
 import Debug "mo:base/Debug";
+import Iter "mo:base/Iter";
 import Types "./Types";
 
 module {
@@ -44,9 +45,9 @@ module {
         eventType: EventType;
         level: EventLevel;
         timestamp: Int;
-        actor: Principal;
+        caller: Principal;
         message: Text;
-        metadata: ?Text; // JSON string con datos adicionales
+        metadata: ?Text;
         propertyId: ?Types.PropertyId;
         userId: ?Types.UserId;
         transactionId: ?Text;
@@ -57,7 +58,7 @@ module {
     public type EventFilter = {
         eventType: ?EventType;
         level: ?EventLevel;
-        actor: ?Principal;
+        caller: ?Principal;
         propertyId: ?Types.PropertyId;
         userId: ?Types.UserId;
         fromTimestamp: ?Int;
@@ -76,9 +77,9 @@ module {
     
     public class EventManager() {
         
-        // Estado privado
-        private stable var nextEventId: Nat = 1;
-        private stable var eventsData: [Event] = [];
+        // Estado privado - REMOVIDO 'stable' porque esto es una clase, no un actor
+        private var nextEventId: Nat = 1;
+        private var eventsData: [Event] = [];
         private var events = Buffer.Buffer<Event>(0);
         private var eventsByType = HashMap.HashMap<EventType, Nat>(10, eventTypeEqual, eventTypeHash);
         private var eventsByLevel = HashMap.HashMap<EventLevel, Nat>(5, eventLevelEqual, eventLevelHash);
@@ -93,7 +94,7 @@ module {
         public func logEvent(
             eventType: EventType,
             level: EventLevel,
-            actor: Principal,
+            caller: Principal,
             message: Text,
             metadata: ?Text,
             propertyId: ?Types.PropertyId,
@@ -107,7 +108,7 @@ module {
                 eventType = eventType;
                 level = level;
                 timestamp = Time.now();
-                actor = actor;
+                caller = caller;
                 message = message;
                 metadata = metadata;
                 propertyId = propertyId;
@@ -131,9 +132,14 @@ module {
             // Mantener solo los últimos 10000 eventos para evitar crecimiento infinito
             if (events.size() > 10000) {
                 let newEvents = Buffer.Buffer<Event>(9000);
-                let startIndex = events.size() - 9000;
-                for (i in startIndex..(events.size() - 1)) {
+                let eventsSize = events.size();
+                // CORREGIDO: Usar saturating subtraction para evitar trap
+                let startIndex = if (eventsSize >= 9000) eventsSize - 9000 else 0;
+                
+                var i = startIndex;
+                while (i < eventsSize) {
                     newEvents.add(events.get(i));
+                    i += 1;
                 };
                 events := newEvents;
             };
@@ -143,45 +149,47 @@ module {
         
         // Funciones de conveniencia para diferentes tipos de eventos
         public func logPropertyCreated(
-            actor: Principal, 
+            caller: Principal,
             propertyId: Types.PropertyId, 
             propertyName: Text
         ) : Event {
             logEvent(
                 #PropertyCreated,
                 #Info,
-                actor,
+                caller,
                 "Property created: " # propertyName,
                 null,
                 ?propertyId,
-                ?actor,
+                ?caller,
                 null,
                 null
             )
         };
         
         public func logTokenPurchase(
-            actor: Principal,
+            caller: Principal,
             propertyId: Types.PropertyId,
             amount: Nat,
             tokenQuantity: Nat
         ) : Event {
-            let metadata = "{\"tokenQuantity\":" # debug_show(tokenQuantity) # ",\"pricePerToken\":" # debug_show(amount / tokenQuantity) # "}";
+            // CORREGIDO: División segura para evitar trap
+            let pricePerToken = if (tokenQuantity > 0) { amount / tokenQuantity } else { 0 };
+            let metadata = "{\"tokenQuantity\":" # debug_show(tokenQuantity) # ",\"pricePerToken\":" # debug_show(pricePerToken) # "}";
             logEvent(
                 #TokenPurchased,
                 #Info,
-                actor,
+                caller,
                 "Tokens purchased: " # debug_show(tokenQuantity) # " tokens",
                 ?metadata,
                 ?propertyId,
-                ?actor,
+                ?caller,
                 null,
                 ?amount
             )
         };
         
         public func logPaymentProcessed(
-            actor: Principal,
+            caller: Principal,
             transactionId: Text,
             amount: Nat,
             propertyId: ?Types.PropertyId
@@ -189,18 +197,18 @@ module {
             logEvent(
                 #PaymentProcessed,
                 #Info,
-                actor,
+                caller,
                 "Payment processed successfully",
                 null,
                 propertyId,
-                ?actor,
+                ?caller,
                 ?transactionId,
                 ?amount
             )
         };
         
         public func logPaymentFailed(
-            actor: Principal,
+            caller: Principal,
             transactionId: Text,
             errorMessage: Text,
             amount: Nat
@@ -208,25 +216,25 @@ module {
             logEvent(
                 #PaymentFailed,
                 #Error,
-                actor,
+                caller,
                 "Payment failed: " # errorMessage,
                 null,
                 null,
-                ?actor,
+                ?caller,
                 ?transactionId,
                 ?amount
             )
         };
         
         public func logSystemError(
-            actor: Principal,
+            caller: Principal,
             errorMessage: Text,
             context: ?Text
         ) : Event {
             logEvent(
                 #SystemError,
                 #Error,
-                actor,
+                caller,
                 "System error: " # errorMessage,
                 context,
                 null,
@@ -237,18 +245,18 @@ module {
         };
         
         public func logSecurityAlert(
-            actor: Principal,
+            caller: Principal,
             alertMessage: Text,
             severity: EventLevel
         ) : Event {
             logEvent(
                 #SecurityAlert,
                 severity,
-                actor,
+                caller,
                 "Security alert: " # alertMessage,
                 null,
                 null,
-                ?actor,
+                ?caller,
                 null,
                 null
             )
@@ -269,16 +277,15 @@ module {
             
             if (size == 0) return [];
             
-            var i: Int = size - 1;
-            while (i >= 0 and count < limit) {
-                let event = eventsArray[Int.abs(i)];
+            var i = size;
+            while (i > 0 and count < limit) {
+                i -= 1;
+                let event = eventsArray[i];
                 
                 if (matchesFilter(event, filter)) {
                     results.add(event);
                     count += 1;
                 };
-                
-                i -= 1;
             };
             
             Buffer.toArray(results)
@@ -289,7 +296,7 @@ module {
             let filter: EventFilter = {
                 eventType = ?eventType;
                 level = null;
-                actor = null;
+                caller = null;
                 propertyId = null;
                 userId = null;
                 fromTimestamp = null;
@@ -304,7 +311,7 @@ module {
             let filter: EventFilter = {
                 eventType = null;
                 level = null;
-                actor = null;
+                caller = null;
                 propertyId = null;
                 userId = ?userId;
                 fromTimestamp = null;
@@ -319,7 +326,7 @@ module {
             let filter: EventFilter = {
                 eventType = null;
                 level = null;
-                actor = null;
+                caller = null;
                 propertyId = ?propertyId;
                 userId = null;
                 fromTimestamp = null;
@@ -339,11 +346,14 @@ module {
             let size = events.size();
             if (size == 0) return [];
             
-            let startIndex = if (size > actualLimit) size - actualLimit else 0;
+            // CORREGIDO: Subtracción segura para evitar trap
+            let startIndex = if (size >= actualLimit) size - actualLimit else 0;
             let results = Buffer.Buffer<Event>(actualLimit);
             
-            for (i in startIndex..(size - 1)) {
+            var i = startIndex;
+            while (i < size) {
                 results.add(events.get(i));
+                i += 1;
             };
             
             // Reverse para tener los más recientes primero
@@ -373,8 +383,8 @@ module {
             
             {
                 totalEvents = events.size();
-                eventsByType = eventsByType.entries() |> Iter.toArray(_);
-                eventsByLevel = eventsByLevel.entries() |> Iter.toArray(_);
+                eventsByType = Iter.toArray(eventsByType.entries());
+                eventsByLevel = Iter.toArray(eventsByLevel.entries());
                 recentErrors = recentErrors;
                 systemHealth = systemHealth;
             }
@@ -409,10 +419,10 @@ module {
                 case null {};
             };
             
-            // Filtro por actor
-            switch (filter.actor) {
-                case (?actor) {
-                    if (event.actor != actor) return false;
+            // Filtro por caller
+            switch (filter.caller) {
+                case (?caller) {
+                    if (event.caller != caller) return false;
                 };
                 case null {};
             };
@@ -539,6 +549,3 @@ module {
         }
     };
 }
-
-// Importaciones necesarias
-import Iter "mo:base/Iter";
