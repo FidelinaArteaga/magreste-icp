@@ -29,7 +29,7 @@ actor MagresteLabs {
     type SystemError = Types.SystemError;
     type Property = Types.Property;
     type PropertyToken = Types.PropertyToken;
-    type User = Types.User;
+    type User = Types.UserId;
     type TransactionRecord = Types.TransactionRecord;
     type PaymentRecord = Types.PaymentRecord;
     type PurchaseRequest = Types.PurchaseRequest;
@@ -43,7 +43,7 @@ actor MagresteLabs {
     private stable var transactionEntries : [(Text, TransactionRecord)] = [];
 
     // Initialize managers
-    private var authentication = Authentication.Authentication(HashMap.fromIter<Principal, User>(userEntries.vals(), 10, Principal.equal, Principal.hash));
+    private var authenticationManager = AuthenticationManager.AuthenticationManager(HashMap.fromIter<Principal, User>(userEntries.vals(), 10, Principal.equal, Principal.hash));
     private var propertyManager = PropertyManager.PropertyManager(HashMap.fromIter<Text, Property>(propertyEntries.vals(), 10, Text.equal, Text.hash));
     private var tokenManager = TokenManager.TokenManager(HashMap.fromIter<Text, PropertyToken>(tokenEntries.vals(), 10, Text.equal, Text.hash));
     private var transactionManager = TransactionManager.TransactionManager(HashMap.fromIter<Text, TransactionRecord>(transactionEntries.vals(), 10, Text.equal, Text.hash));

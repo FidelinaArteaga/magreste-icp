@@ -134,7 +134,7 @@ module {
                 let newEvents = Buffer.Buffer<Event>(9000);
                 let eventsSize = events.size();
                 // CORREGIDO: Usar saturating subtraction para evitar trap
-                let startIndex = if (eventsSize >= 9000) eventsSize - 9000 else 0;
+                let startIndex = Nat.max(0, eventsSize - 9000);
                 
                 var i = startIndex;
                 while (i < eventsSize) {
@@ -347,7 +347,7 @@ module {
             if (size == 0) return [];
             
             // CORREGIDO: Subtracción segura para evitar trap
-            let startIndex = if (size >= actualLimit) size - actualLimit else 0;
+            let startIndex = Nat.max(0, size - actualLimit);
             let results = Buffer.Buffer<Event>(actualLimit);
             
             var i = startIndex;
