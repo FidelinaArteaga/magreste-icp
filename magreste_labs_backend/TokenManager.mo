@@ -57,6 +57,7 @@ module {
                     propertyId = propertyId;
                     owner = owner;
                     price = pricePerToken;
+                    currentValue = pricePerToken; // AGREGADO: campo currentValue requerido
                     createdAt = now;
                     canTransfer = false;
                     transferEnabledAt = now + TRANSFER_LOCK_PERIOD;

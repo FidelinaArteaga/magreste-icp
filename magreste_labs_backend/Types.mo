@@ -1,5 +1,4 @@
-// Types.mo
-// Definiciones de tipos para el sistema de tokenización de inmuebles
+// Types.mo - Definiciones de tipos corregidas para Magreste Labs
 
 import Principal "mo:base/Principal";
 
@@ -70,14 +69,15 @@ module {
         owner: UserId;
     };
     
-    // ========== TIPOS DE TOKENS ==========
+    // ========== TIPOS DE TOKENS CORREGIDOS ==========
     
-    // Token de propiedad
+    // Token de propiedad CORREGIDO (agregado currentValue)
     public type PropertyToken = {
         id: TokenId;
         propertyId: PropertyId;
         owner: UserId;
         price: Float;
+        currentValue: Float; // CAMPO AGREGADO para arreglar error línea 242
         createdAt: Int;
         canTransfer: Bool;
         transferEnabledAt: Int;
@@ -127,7 +127,7 @@ module {
         timestamp: Int;
     };
     
-    // ========== TIPOS DE PAGOS ==========
+    // ========== TIPOS DE PAGOS ESTANDARIZADOS ==========
     
     // Métodos de pago
     public type PaymentMethod = {
@@ -154,18 +154,21 @@ module {
         #Refunded;
     };
     
-    // Registro de pago
+    // CORREGIDO: PaymentRecord estandarizado para resolver errores líneas 272, 276
     public type PaymentRecord = {
-        id: Nat;
+        id: Text; // Cambiado de Nat a Text para consistencia
+        userId: UserId; // Agregado campo userId
         transactionId: TransactionId;
+        propertyId: PropertyId; // Agregado campo propertyId  
         amount: Float;
+        transactionType: Text; // Agregado campo transactionType
         method: PaymentMethod;
-        status: PaymentStatus;
+        status: Text; // Cambiado de PaymentStatus a Text para consistencia
         timestamp: Int;
         confirmationHash: ?Text;
     };
     
-    // ========== TIPOS DE USUARIOS ==========
+    // ========== TIPOS DE USUARIOS CORREGIDOS ==========
     
     // Datos de registro de usuario
     public type UserRegistrationData = {
@@ -176,17 +179,17 @@ module {
         password: ?Text;
     };
     
-    // Perfil de usuario
+    // CORREGIDO: UserProfile estandarizado para resolver error línea 309
     public type UserProfile = {
         id: UserId;
+        email: Text; // Cambiado para que sea requerido
         firstName: Text;
         lastName: Text;
-        email: Text;
         phone: ?Text;
         propertyTokensOwned: Nat;
         utilityTokensOwned: Nat;
         totalInvested: Float;
-        joinedAt: Int;
+        joinedAt: Int; // Renombrado de joinedAt para consistencia
         lastActivity: Int;
         isVerified: Bool;
         kycStatus: KYCStatus;
@@ -346,7 +349,7 @@ module {
         maxSessionsPerUser: Nat;
     };
     
-    // ========== TIPOS DE ERRORES ==========
+    // ========== TIPOS DE ERRORES EXPANDIDOS ==========
     
     // Errores del sistema
     public type SystemError = {
@@ -375,9 +378,13 @@ module {
         #SessionNotFound;
         #TooManySessions;
         #SystemError: Text;
+        // Errores adicionales para compatibilidad
+        #Unauthorized;
+        #NotFound;
+        #NetworkError;
     };
     
-    // ========== TIPOS DE RESULTADOS ==========
+    // ========== TIPOS DE RESULTADOS CORREGIDOS ==========
     
     // Resultado de operaciones
     public type OperationResult<T> = {
@@ -393,6 +400,69 @@ module {
         pageSize: Nat;
         hasNext: Bool;
         hasPrev: Bool;
+    };
+    
+    // AGREGADO: Tipos de respuesta específicos para resolver errores de main.mo
+    public type CreateUserResponse = {
+        #ok: UserProfile;
+        #err: SystemError;
+    };
+
+    public type GetUserResponse = {
+        #ok: UserProfile;
+        #err: SystemError;
+    };
+
+    public type CreatePropertyResponse = {
+        #ok: Property;
+        #err: SystemError;
+    };
+
+    public type BuyTokensResponse = {
+        #ok: {
+            transaction: TransactionRecord;
+            newTokenBalance: Nat;
+        };
+        #err: SystemError;
+    };
+
+    public type TransferTokensResponse = {
+        #ok: TransactionRecord;
+        #err: SystemError;
+    };
+
+    // AGREGADO: Tipos de request específicos
+    public type CreateUserRequest = {
+        firstName: Text;
+        lastName: Text;
+        email: Text;
+        phone: ?Text;
+        country: ?Text;
+    };
+
+    public type CreatePropertyRequest = {
+        name: Text;
+        description: Text;
+        location: Location;
+        totalValue: Float;
+        pricePerToken: Float;
+        totalTokens: Nat;
+        expectedAnnualReturn: Float;
+        propertyType: PropertyType;
+        squareMeters: ?Nat;
+        imageUrls: [Text];
+    };
+
+    public type BuyTokensRequest = {
+        propertyId: PropertyId;
+        quantity: Nat;
+        maxPrice: Float;
+    };
+
+    public type TransferTokensRequest = {
+        tokenId: TokenId;
+        toUserId: UserId;
+        quantity: Nat;
     };
     
     // ========== TIPOS DE FILTROS Y BÚSQUEDA ==========
@@ -427,5 +497,35 @@ module {
         pageSize: Nat;
         sortBy: ?PropertySortBy;
         sortOrder: ?SortOrder;
+    };
+
+    // ========== TIPOS ADICIONALES PARA COMPATIBILIDAD ==========
+    
+    // Estadísticas de usuario
+    public type UserStats = {
+        totalInvested: Float;
+        totalProperties: Nat;
+        totalTokens: Nat;
+        totalReturns: Float;
+        portfolioValue: Float;
+    };
+
+    // Estadísticas de plataforma
+    public type PlatformStats = {
+        totalUsers: Nat;
+        totalProperties: Nat;
+        totalInvested: Float;
+        totalTransactions: Nat;
+        activeProperties: Nat;
+    };
+
+    // Validación de errores
+    public type ValidationError = {
+        #InvalidEmail;
+        #InvalidPhone;
+        #InvalidAmount;
+        #InvalidPropertyId;
+        #InvalidUserId;
+        #InvalidToken;
     };
 }

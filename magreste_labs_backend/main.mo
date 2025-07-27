@@ -1,335 +1,455 @@
-import Debug "mo:base/Debug";
+import Types "./Types";
+import HashMap "mo:base/HashMap";
+import Hash "mo:base/Hash";
+import Text "mo:base/Text";
 import Time "mo:base/Time";
 import Result "mo:base/Result";
+import Array "mo:base/Array";
+import Iter "mo:base/Iter";
+import Option "mo:base/Option";
+import Int "mo:base/Int";
+import Float "mo:base/Float";
 import Principal "mo:base/Principal";
 import Nat "mo:base/Nat";
-import Text "mo:base/Text";
-import HashMap "mo:base/HashMap";
-import Array "mo:base/Array";
-import Buffer "mo:base/Buffer";
+import Debug "mo:base/Debug";
 
-// Import your modules
-import Types "Types";
-import Authentication "Authentication";
-import PropertyManager "PropertyManager"; 
-import TokenManager "TokenManager";
-import TransactionManager "TransactionManager";
-import PaymentManager "PaymentManager";
-import Validation "Validation";
-import Events "Events";
-import Utils "Utils";
+// Importar módulos personalizados (asegúrate de que estos módulos existen y están correctos)
+// import PropertyManager "./PropertyManager";
+// import TokenManager "./TokenManager";
+// import TransactionManager "./TransactionManager";
+// import Validation "./Validation";
 
 actor MagresteLabs {
-    // Type aliases for cleaner code
-    type Result<T, E> = Result.Result<T, E>;
-    type UserId = Types.UserId;
-    type PropertyId = Types.PropertyId;
-    type TokenId = Types.TokenId;
-    type TransactionId = Types.TransactionId;
-    type SystemError = Types.SystemError;
-    type Property = Types.Property;
-    type PropertyToken = Types.PropertyToken;
-    type User = Types.UserId;
-    type TransactionRecord = Types.TransactionRecord;
-    type PaymentRecord = Types.PaymentRecord;
-    type PurchaseRequest = Types.PurchaseRequest;
-    type PropertyType = Types.PropertyType;
-    type Location = Types.Location;
+    // ========== FUNCIÓN HASH PERSONALIZADA ==========
+    private func natHash(n: Nat): Hash.Hash {
+        Text.hash(Nat.toText(n))
+    };
 
-    // Stable variables for upgrade persistence
-    private stable var userEntries : [(Principal, User)] = [];
-    private stable var propertyEntries : [(Text, Property)] = [];
-    private stable var tokenEntries : [(Text, PropertyToken)] = [];
-    private stable var transactionEntries : [(Text, TransactionRecord)] = [];
+    // ========== CONTADORES ESTABLES ==========
+    private stable var nextUserId: Nat = 1;
+    private stable var nextPropertyId: Nat = 1;
+    private stable var nextTokenId: Nat = 1;
+    private stable var nextTransactionId: Nat = 1;
 
-    // Initialize managers
-    private var authenticationManager = AuthenticationManager.AuthenticationManager(HashMap.fromIter<Principal, User>(userEntries.vals(), 10, Principal.equal, Principal.hash));
-    private var propertyManager = PropertyManager.PropertyManager(HashMap.fromIter<Text, Property>(propertyEntries.vals(), 10, Text.equal, Text.hash));
-    private var tokenManager = TokenManager.TokenManager(HashMap.fromIter<Text, PropertyToken>(tokenEntries.vals(), 10, Text.equal, Text.hash));
-    private var transactionManager = TransactionManager.TransactionManager(HashMap.fromIter<Text, TransactionRecord>(transactionEntries.vals(), 10, Text.equal, Text.hash));
-    private var paymentManager = PaymentManager.PaymentManager();
+    // ========== ARRAYS ESTABLES PARA PERSISTENCIA ==========
+    private stable var usersEntries: [(Types.UserId, Types.UserProfile)] = [];
+    private stable var propertiesEntries: [(Types.PropertyId, Types.Property)] = [];
+    private stable var tokensEntries: [(Types.TokenId, Types.PropertyToken)] = [];
+    private stable var transactionsEntries: [(Text, Types.TransactionRecord)] = [];
+    private stable var paymentRecordsEntries: [(Text, Types.PaymentRecord)] = [];
+    private stable var userTokensEntries: [(Types.UserId, [Types.TokenId])] = [];
 
-    // System upgrade hooks
+    // ========== HASHMAPS (NO PUEDEN SER STABLE) ==========
+    private var users = HashMap.HashMap<Types.UserId, Types.UserProfile>(
+        0, 
+        Principal.equal, 
+        Principal.hash
+    );
+
+    private var properties = HashMap.HashMap<Types.PropertyId, Types.Property>(
+        0,  
+        Nat.equal,  
+        natHash
+    );
+
+    private var tokens = HashMap.HashMap<Types.TokenId, Types.PropertyToken>(
+        0, 
+        Nat.equal, 
+        natHash
+    );
+
+    private var transactions = HashMap.HashMap<Text, Types.TransactionRecord>(
+        0,
+        Text.equal,
+        Text.hash
+    );
+
+    private var paymentRecords = HashMap.HashMap<Text, Types.PaymentRecord>(
+        0,
+        Text.equal,
+        Text.hash
+    );
+
+    private var userTokens = HashMap.HashMap<Types.UserId, [Types.TokenId]>(
+        0, 
+        Principal.equal, 
+        Principal.hash
+    );
+
+    // ========== FUNCIONES DE UPGRADE PARA PERSISTENCIA ==========
     system func preupgrade() {
-        userEntries := authentication.getEntries();
-        propertyEntries := propertyManager.getEntries();
-        tokenEntries := tokenManager.getEntries();
-        transactionEntries := transactionManager.getEntries();
+        usersEntries := users.entries() |> Iter.toArray(_);
+        propertiesEntries := properties.entries() |> Iter.toArray(_);
+        tokensEntries := tokens.entries() |> Iter.toArray(_);
+        transactionsEntries := transactions.entries() |> Iter.toArray(_);
+        paymentRecordsEntries := paymentRecords.entries() |> Iter.toArray(_);
+        userTokensEntries := userTokens.entries() |> Iter.toArray(_);
     };
 
     system func postupgrade() {
-        userEntries := [];
-        propertyEntries := [];
-        tokenEntries := [];
-        transactionEntries := [];
+        users := HashMap.fromIter<Types.UserId, Types.UserProfile>(
+            usersEntries.vals(),
+            usersEntries.size(),
+            Principal.equal,
+            Principal.hash
+        );
+        
+        properties := HashMap.fromIter<Types.PropertyId, Types.Property>(
+            propertiesEntries.vals(),
+            propertiesEntries.size(),
+            Nat.equal,
+            natHash
+        );
+        
+        tokens := HashMap.fromIter<Types.TokenId, Types.PropertyToken>(
+            tokensEntries.vals(),
+            tokensEntries.size(),
+            Nat.equal,
+            natHash
+        );
+        
+        transactions := HashMap.fromIter<Text, Types.TransactionRecord>(
+            transactionsEntries.vals(),
+            transactionsEntries.size(),
+            Text.equal,
+            Text.hash
+        );
+        
+        paymentRecords := HashMap.fromIter<Text, Types.PaymentRecord>(
+            paymentRecordsEntries.vals(),
+            paymentRecordsEntries.size(),
+            Text.equal,
+            Text.hash
+        );
+        
+        userTokens := HashMap.fromIter<Types.UserId, [Types.TokenId]>(
+            userTokensEntries.vals(),
+            userTokensEntries.size(),
+            Principal.equal,
+            Principal.hash
+        );
+        
+        // Limpiar arrays después de la restauración
+        usersEntries := [];
+        propertiesEntries := [];
+        tokensEntries := [];
+        transactionsEntries := [];
+        paymentRecordsEntries := [];
+        userTokensEntries := [];
     };
 
-    // Helper function to convert validation errors to system errors
-    private func convertValidationError(error: Validation.ValidationError) : SystemError {
-        switch (error) {
-            case (#Required(field)) { #ValidationError("Required field: " # field) };
-            case (#TooLong({field; maxLength})) { #ValidationError("Field " # field # " too long, max: " # Nat.toText(maxLength)) };
-            case (#TooShort({field; minLength})) { #ValidationError("Field " # field # " too short, min: " # Nat.toText(minLength)) };
-            case (#InvalidFormat(msg)) { #ValidationError("Invalid format: " # msg) };
-            case (#InvalidEmail) { #ValidationError("Invalid email format") };
-            case (#InvalidPhone) { #ValidationError("Invalid phone format") };
-            case (#InvalidURL) { #ValidationError("Invalid URL format") };
-            case (#InvalidPrice) { #ValidationError("Invalid price") };
-            case (#InvalidPercentage) { #ValidationError("Invalid percentage") };
-            case (#InvalidDate) { #ValidationError("Invalid date") };
-            case (#InvalidAddress) { #ValidationError("Invalid address") };
-            case (#InvalidCoordinates) { #ValidationError("Invalid coordinates") };
-            case (#OutOfRange({field; min; max})) { #ValidationError("Field " # field # " out of range") };
-            case (#DuplicateValue(field)) { #ValidationError("Duplicate value in field: " # field) };
-            case (#WeakPassword) { #ValidationError("Password too weak") };
-            case (#ProfanityDetected(field)) { #ValidationError("Inappropriate content in field: " # field) };
-            case (#FileTooLarge) { #ValidationError("File too large") };
-            case (#InvalidFileFormat) { #ValidationError("Invalid file format") };
-            case (#InvalidKYCDocument) { #ValidationError("Invalid KYC document") };
-            case (#InvalidEnum({field; validValues})) { #ValidationError("Invalid enum value for field: " # field) };
-            case (#CustomError(msg)) { #ValidationError(msg) };
-        }
-    };
-
-    // Helper function to require user registration
-    private func requireRegistration(userId: Principal) : Result<User, SystemError> {
-        switch (authentication.getUser(userId)) {
-            case (#ok(user)) { #ok(user) };
-            case (#err(_)) { #err(#UserNotFound) };
-        }
-    };
-
-    // PROPERTY MANAGEMENT
-
-    public query func getProperties() : async Result<[Property], SystemError> {
-        let properties = propertyManager.getActiveProperties();
-        #ok(properties)
-    };
-
-    public query func getUserPropertiesByOwner(userId: Principal) : async [Property] {
-        propertyManager.getPropertiesByOwner(userId)
-    };
-
-    public query func getProperty(propertyId: PropertyId) : async Result<Property, SystemError> {
-        propertyManager.getProperty(propertyId)
-    };
-
-    public func createProperty(
-        name: Text,
-        description: Text,
-        location: Text, // Simplified - you may want to parse this into Location type
-        totalTokens: Nat,
-        ownerId: Principal,
-        imageUrl: ?Text,
-        propertyTypeStr: Text,
-        squareMeters: ?Nat,
-        estimatedValue: ?Nat
-    ) : async Result<PropertyId, SystemError> {
-        // Validate user exists
-        switch (requireRegistration(ownerId)) {
-            case (#err(error)) { return #err(error) };
-            case (#ok(_)) {};
+    // ========== FUNCIONES DE USUARIO ==========
+    
+    public func createUser(request: Types.CreateUserRequest): async Types.CreateUserResponse {
+        let caller = msg.caller;
+        
+        // Validar si el usuario ya existe
+        if (users.containsKey(caller)) {
+            return #err(#AlreadyInitialized);
         };
 
-        // Validate input
-        let validationResult = Validation.validatePropertyData({
-            name = name;
-            description = description;
-            location = { city = location; country = ""; coordinates = null }; // Simplified
-            totalTokens = totalTokens;
-            pricePerToken = 100.0; // Default value
-            expectedAnnualReturn = 8.0; // Default value
-            propertyType = #Residential; // Default - parse propertyTypeStr if needed
-            squareMeters = squareMeters;
-            imageUrls = switch (imageUrl) { case (?url) [url]; case null [] };
-            totalValue = Float.fromInt(Int.abs(totalTokens * 100)); // Calculate from tokens and price
-        });
+        let user: Types.UserProfile = { 
+            id = caller;
+            email = request.email;
+            firstName = request.firstName;
+            lastName = request.lastName;
+            phone = request.phone;
+            isVerified = false;
+            joinedAt = Time.now();
+            lastActivity = Time.now();
+            kycStatus = #NotStarted; 
+            totalInvested = 0.0;
+            propertyTokensOwned = 0;
+            utilityTokensOwned = 0;
+            role = #Investor; 
+            permissions = [#ViewPublicData]; 
+            country = request.country;
+            isActive = true;
+        };
 
-        switch (validationResult) {
-            case (#err(validationError)) { 
-                return #err(convertValidationError(validationError))
+        users.put(caller, user);
+        #ok(user)
+    };
+
+    public func getUser(userId: Types.UserId): async Types.GetUserResponse {
+        switch (users.get(userId)) {
+            case (?user) { #ok(user) };
+            case null { #err(#NotFound) }; 
+        }
+    };
+
+    public query func getUserById(userId: Types.UserId): async ?Types.UserProfile { 
+        switch (users.get(userId)) {
+            case (?user) {
+                let updatedUser: Types.UserProfile = { 
+                    id = user.id;
+                    email = user.email;
+                    firstName = user.firstName;
+                    lastName = user.lastName;
+                    phone = user.phone;
+                    isVerified = user.isVerified;
+                    joinedAt = user.joinedAt;
+                    lastActivity = Time.now(); 
+                    kycStatus = user.kycStatus;
+                    totalInvested = calculateUserInvestment(userId);
+                    propertyTokensOwned = calculateUserTokens(userId);
+                    utilityTokensOwned = user.utilityTokensOwned;
+                    role = user.role;
+                    permissions = user.permissions;
+                    country = user.country;
+                    isActive = user.isActive;
+                };
+                ?updatedUser 
             };
-            case (#ok(_)) {};
-        };
-
-        // Create property
-        propertyManager.createProperty(
-            name,
-            description, 
-            location,
-            totalTokens,
-            ownerId,
-            imageUrl,
-            propertyTypeStr,
-            squareMeters,
-            estimatedValue
-        )
-    };
-
-    // TOKEN MANAGEMENT
-
-    public query func getPropertyTokens(propertyId: PropertyId) : async Result<[PropertyToken], SystemError> {
-        let tokens = tokenManager.getTokensByProperty(propertyId);
-        #ok(tokens)
-    };
-
-    public query func getUserTokens(userId: Principal) : async Result<[PropertyToken], SystemError> {
-        let tokens = tokenManager.getUserPropertyTokens(userId);
-        #ok(tokens)
-    };
-
-    public query func getToken(tokenId: TokenId) : async Result<PropertyToken, SystemError> {
-        switch (tokenManager.getPropertyToken(tokenId)) {
-            case (?token) { #ok(token) };
-            case null { #err(#TokenNotFound) };
+            case null { null }; 
         }
     };
 
-    public func createPropertyTokens(propertyId: PropertyId, quantity: Nat) : async Result<[TokenId], SystemError> {
-        // Validate property exists
-        switch (propertyManager.getProperty(propertyId)) {
-            case (#err(error)) { return #err(error) };
-            case (#ok(_)) {};
+    // ========== FUNCIONES DE PROPIEDADES ==========
+    
+    public func createProperty(request: Types.CreatePropertyRequest, ownerId: Types.UserId): async Types.CreatePropertyResponse {
+        let propertyId = nextPropertyId;
+        nextPropertyId += 1;
+
+        // Validar que el ownerId existe como usuario registrado
+        if (not users.containsKey(ownerId)) {
+            return #err(#UserNotFound);
         };
 
-        tokenManager.mintPropertyTokens(propertyId, quantity)
+        let property: Types.Property = {
+            id = propertyId;
+            name = request.name; 
+            description = request.description;
+            location = request.location;
+            totalValue = request.totalValue;
+            pricePerToken = request.pricePerToken; 
+            totalTokens = request.totalTokens;
+            tokensIssued = request.totalTokens; 
+            tokensSold = 0; 
+            owner = ownerId;
+            isActive = true; 
+            createdAt = Time.now();
+            imageUrls = request.imageUrls; 
+            expectedAnnualReturn = request.expectedAnnualReturn; 
+            propertyType = request.propertyType; 
+            squareMeters = request.squareMeters; 
+        };
+
+        properties.put(propertyId, property);
+        #ok(property)
     };
 
-    // TRANSACTION MANAGEMENT
-
-    public func purchaseTokens(propertyId: PropertyId, quantity: Nat) : async Result<TransactionId, SystemError> {
-        let userId = Principal.fromActor(MagresteLabs); // Get caller principal in real implementation
-        
-        // Validate user registration
-        switch (requireRegistration(userId)) {
-            case (#err(error)) { return #err(error) };
-            case (#ok(_)) {};
-        };
-
-        // Create purchase transaction record
-        let tokenIds = []; // In real implementation, you'd assign specific token IDs
-        let totalAmount = Float.fromInt(Int.abs(quantity * 100)); // Calculate based on token price
-        
-        transactionManager.recordPurchaseTransaction(propertyId, tokenIds, userId, totalAmount)
-    };
-
-    public func transferToken(tokenId: TokenId, fromUser: Principal, toUser: Principal) : async Result<TransactionId, SystemError> {
-        // Validate both users exist
-        switch (requireRegistration(fromUser)) {
-            case (#err(error)) { return #err(error) };
-            case (#ok(_)) {};
-        };
-        
-        switch (requireRegistration(toUser)) {
-            case (#err(error)) { return #err(error) };
-            case (#ok(_)) {};
-        };
-
-        // Get token info
-        switch (tokenManager.getPropertyToken(tokenId)) {
-            case null { return #err(#TokenNotFound) };
-            case (?token) {
-                transactionManager.recordTransferTransaction(
-                    token.propertyId, 
-                    tokenId, 
-                    fromUser, 
-                    toUser, 
-                    token.currentValue
-                )
+    public func getPropertyAvailability(propertyId: Types.PropertyId): async (Types.PropertyId, ?Bool) {
+        switch (properties.get(propertyId)) {
+            case (?property) {
+                let availableTokens = property.totalTokens - property.tokensSold;
+                let isAvailable = availableTokens > 0 and property.isActive; 
+                (propertyId, ?isAvailable)
             };
+            case null { (propertyId, null) };
         }
     };
 
-    public query func getTransactionHistory(userId: Principal, limit: ?Nat, offset: ?Nat) : async Result<[TransactionRecord], SystemError> {
-        transactionManager.getUserTransactions(userId, limit, offset)
+    // ========== FUNCIONES DE TOKENS ==========
+    public func createTokens(propertyId: Types.PropertyId, quantity: Nat): async [Types.PropertyToken] {
+        var createdTokens: [Types.PropertyToken] = [];
+        
+        switch (properties.get(propertyId)) {
+            case (?property) {
+                if (property.tokensIssued + quantity > property.totalTokens) {
+                    Debug.print("Attempted to issue more tokens than totalTokens for property " # Nat.toText(propertyId));
+                    return []; 
+                };
+
+                for (i in Iter.range(0, quantity - 1)) {
+                    let tokenId = nextTokenId;
+                    nextTokenId += 1;
+                    
+                    let token: Types.PropertyToken = {
+                        id = tokenId;
+                        propertyId = propertyId;
+                        owner = Principal.anonymous(); 
+                        price = property.pricePerToken; 
+                        currentValue = property.pricePerToken; 
+                        canTransfer = false;
+                        transferEnabledAt = Time.now() + (30 * 24 * 60 * 60 * 1_000_000_000); 
+                        createdAt = Time.now();
+                        metadata = null;
+                    };
+                    
+                    tokens.put(tokenId, token);
+                    createdTokens := Array.append(createdTokens, [token]);
+                };
+
+                let updatedProperty: Types.Property = {
+                    property with 
+                    tokensIssued = property.tokensIssued + quantity
+                };
+                properties.put(propertyId, updatedProperty); 
+            };
+            case null {
+                Debug.print("Property not found for token creation: " # Nat.toText(propertyId));
+            };
+        };
+        createdTokens
     };
 
-    public query func getTransaction(transactionId: TransactionId) : async Result<TransactionRecord, SystemError> {
-        switch (transactionManager.getTransaction(transactionId)) {
-            case (?transaction) { #ok(transaction) };
-            case null { #err(#TransactionNotFound) };
-        }
+    // ========== FUNCIONES DE TRANSACCIONES ==========
+    
+    public func createTransaction(
+        propertyId: Types.PropertyId, 
+        quantity: Nat, 
+        price: Float,  
+        userId: Types.UserId 
+    ): async (Types.PropertyId, Nat, Float, Types.UserId) { 
+        let currentTransactionId = nextTransactionId;
+        nextTransactionId += 1; 
+
+        let transactionIdText = Nat.toText(currentTransactionId); 
+
+        let transaction: Types.TransactionRecord = { 
+            id = transactionIdText; 
+            fromUser = null; 
+            toUser = ?userId; 
+            propertyId = propertyId;
+            tokenId = null; 
+            amount = price * Float.fromInt(quantity); 
+            tokenAmount = quantity; 
+            transactionType = #Purchase; 
+            status = "pending"; 
+            timestamp = Time.now();
+            fees = 0.0; 
+        };
+        
+        transactions.put(transactionIdText, transaction);
+        (propertyId, quantity, price, userId) 
     };
 
-    // PAYMENT MANAGEMENT
-
-    public func createPurchaseRequest(userId: Principal, request: PurchaseRequest) : async Result<Nat, SystemError> {
-        // Validate user registration
-        switch (requireRegistration(userId)) {
-            case (#err(error)) { return #err(error) };
-            case (#ok(_)) {};
+    public func buyTokens(request: Types.BuyTokensRequest, userId: Types.UserId): async Types.BuyTokensResponse {
+        if (not users.containsKey(userId)) {
+            return #err(#UserNotFound);
         };
 
-        paymentManager.createPaymentRequest(userId, request)
+        switch (properties.get(request.propertyId)) {
+            case (?property) {
+                let availableTokens = property.totalTokens - property.tokensSold;
+                
+                if (availableTokens < request.quantity) {
+                    return #err(#InsufficientTokens); 
+                };
+                
+                let totalCost = property.pricePerToken * Float.fromInt(request.quantity); 
+                if (totalCost > request.maxPrice) {
+                    return #err(#InvalidAmount); 
+                };
+                
+                let (_, _, _, _) = await createTransaction(
+                    request.propertyId, 
+                    request.quantity, 
+                    property.pricePerToken, 
+                    userId
+                );
+                
+                var currentUsersTokens = switch (userTokens.get(userId)) {
+                    case (?tokensList) { tokensList };
+                    case null { [] };
+                };
+
+                for (i in Iter.range(0, request.quantity - 1)) {
+                    let tokenOpt = Iter.find(tokens.vals(), func (t: Types.PropertyToken): Bool { 
+                        t.propertyId == request.propertyId and t.owner == Principal.anonymous() 
+                    });
+
+                    switch (tokenOpt) {
+                        case (?tokenToAssign) {
+                            let updatedToken: Types.PropertyToken = {
+                                tokenToAssign with 
+                                owner = userId
+                            };
+                            tokens.put(tokenToAssign.id, updatedToken); 
+                            currentUsersTokens := Array.append(currentUsersTokens, [tokenToAssign.id]);
+                        };
+                        case null {
+                            Debug.print("No available token found for property " # Nat.toText(request.propertyId));
+                            return #err(#SystemError("Failed to assign all tokens."));
+                        };
+                    };
+                };
+                userTokens.put(userId, currentUsersTokens); 
+
+                let updatedProperty: Types.Property = {
+                    property with 
+                    tokensSold = property.tokensSold + request.quantity
+                };
+                properties.put(request.propertyId, updatedProperty);
+
+                let actualTransactionId = Nat.toText(nextTransactionId - 1); 
+                let transactionRecordOpt = transactions.get(actualTransactionId);
+                
+                let finalTransactionRecord = switch (transactionRecordOpt) {
+                    case (?tx) { tx };
+                    case null {
+                        {
+                            id = actualTransactionId;
+                            fromUser = null;
+                            toUser = ?userId;
+                            propertyId = request.propertyId;
+                            tokenId = null;
+                            amount = totalCost;
+                            tokenAmount = request.quantity;
+                            transactionType = #Purchase;
+                            status = "completed";
+                            timestamp = Time.now();
+                            fees = 0.0;
+                        }
+                    };
+                };
+
+                #ok({
+                    transaction = finalTransactionRecord; 
+                    newTokenBalance = currentUsersTokens.size(); 
+                })
+            };
+            case null { #err(#PropertyNotFound) }; 
+        }
     };
 
-    public query func getPaymentStatus(paymentId: Nat) : async Result<PaymentRecord, SystemError> {
-        paymentManager.getPaymentStatus(paymentId)
-    };
-
-    public query func getUserPayments(userId: Principal) : async [PaymentRecord] {
-        paymentManager.getUserPayments(userId)
-    };
-
-    // USER MANAGEMENT
-
-    public func registerUser(userData: {
-        email: Text;
-        firstName: Text; 
-        lastName: Text;
-        password: ?Text;
-        phone: ?Text;
-    }) : async Result<User, SystemError> {
-        let userId = Principal.fromActor(MagresteLabs); // Get caller principal in real implementation
+    // ========== FUNCIONES DE PAGOS ==========
+    
+    public func createPayment(paymentData: Types.PaymentRecord): async Result.Result<Types.PaymentRecord, Types.SystemError> { 
+        // Validación básica
+        if (not properties.containsKey(paymentData.propertyId)) {
+            return #err(#PropertyNotFound);
+        };
+        if (not users.containsKey(paymentData.payeeId)) { 
+            return #err(#UserNotFound);
+        };
         
-        switch (authentication.createUser(userId, userData.firstName, userData.lastName, userData.email)) {
-            case (#ok(user)) { #ok(user) };
-            case (#err(error)) { #err(error) };
-        }
+        let paymentId = paymentData.id; 
+        paymentRecords.put(paymentId, paymentData);
+        #ok(paymentData)
     };
 
-    public query func getUserProfile(userId: Principal) : async Result<User, SystemError> {
-        switch (authentication.getUser(userId)) {
-            case (#ok(user)) { #ok(user) };
-            case (#err(_)) { #err(#UserNotFound) };
-        }
+    // ========== FUNCIONES AUXILIARES ==========
+    private func calculateUserInvestment(userId: Types.UserId): Float {
+        var totalInvestment: Float = 0.0;
+        for ((_, transaction) in transactions.entries()) {
+            switch (transaction.toUser) {
+                case (?user) {
+                    if (user == userId and transaction.transactionType == #Purchase) {
+                        totalInvestment += transaction.amount;
+                    };
+                };
+                case null {};
+            };
+        };
+        totalInvestment
     };
 
-    public func updateProfile(userId: Principal, updates: {
-        name: ?Text;
-        email: ?Text;
-        phone: ?Text;
-        country: ?Text;
-    }) : async Result<(), SystemError> {
-        // In a real implementation, you'd have an updateUserProfile method
-        // For now, return success if user exists
-        switch (requireRegistration(userId)) {
-            case (#err(error)) { #err(error) };
-            case (#ok(_)) { #ok(()) };
+    private func calculateUserTokens(userId: Types.UserId): Nat {
+        switch (userTokens.get(userId)) {
+            case (?tokensList) { tokensList.size() };
+            case null { 0 };
         }
-    };
-
-    // ADMIN/STATS FUNCTIONS
-
-    public query func getSystemStats() : async {
-        totalUsers: Nat;
-        totalProperties: Nat;
-        totalTransactions: Nat;
-        totalTokensIssued: Nat;
-    } {
-        let userStats = authentication.getUserStats();
-        let propertyStats = propertyManager.getPropertyStats();
-        let transactionStats = transactionManager.getTransactionStats();
-        
-        {
-            totalUsers = userStats.totalUsers;
-            totalProperties = propertyStats.totalProperties;
-            totalTransactions = transactionStats.totalTransactions;
-            totalTokensIssued = propertyStats.totalTokensIssued;
-        }
-    };
-
-    public query func healthCheck() : async Bool {
-        true
     };
 }
