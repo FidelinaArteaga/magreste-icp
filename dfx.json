@@ -1,3 +1,4 @@
+
 {
   "canisters": {
     "magreste_labs_backend": {
@@ -9,12 +10,13 @@
       }
     },
     "magreste_labs_frontend": {
-      "dependencies": ["magreste_labs_backend"],
-      "source": ["src/magreste_labs_frontend/dist"],
-      "type": "assets",
-      "declarations": {
-        "output": "src/declarations/magreste_labs_frontend"
-      }
+      "dependencies": [
+        "magreste_labs_backend"
+      ],
+      "source": [
+        "magreste_labs_frontend/build"
+      ],
+      "type": "assets"
     }
   },
   "defaults": {

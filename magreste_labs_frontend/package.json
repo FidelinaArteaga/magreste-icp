@@ -1,7 +1,11 @@
+
 {
-  "name": "real-estate-tokenization",
-  "version": "0.1.0",
-  "private": true,
+  "name": "magreste-labs-root",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd magreste_labs_frontend && npm run build"
+  }
+}
   "dependencies": {
     "@dfinity/agent": "^1.0.1",
     "@dfinity/auth-client": "^1.0.1",

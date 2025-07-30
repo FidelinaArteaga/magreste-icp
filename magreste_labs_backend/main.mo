@@ -13,16 +13,18 @@ import Principal "mo:base/Principal";
 import Nat "mo:base/Nat";
 import Debug "mo:base/Debug";
 
-// Importar módulos personalizados (asegúrate de que estos módulos existen y están correctos)
-// import PropertyManager "./PropertyManager";
-// import TokenManager "./TokenManager";
-// import TransactionManager "./TransactionManager";
-// import Validation "./Validation";
-
 actor MagresteLabs {
     // ========== FUNCIÓN HASH PERSONALIZADA ==========
     private func natHash(n: Nat): Hash.Hash {
         Text.hash(Nat.toText(n))
+    };
+
+    // ========== FUNCIÓN AUXILIAR PARA VERIFICAR SI EXISTE UNA CLAVE ==========
+    private func containsKey<K, V>(map: HashMap.HashMap<K, V>, key: K) : Bool {
+        switch(map.get(key)) {
+            case (?_) true;
+            case null false;
+        }
     };
 
     // ========== CONTADORES ESTABLES ==========
@@ -35,11 +37,11 @@ actor MagresteLabs {
     private stable var usersEntries: [(Types.UserId, Types.UserProfile)] = [];
     private stable var propertiesEntries: [(Types.PropertyId, Types.Property)] = [];
     private stable var tokensEntries: [(Types.TokenId, Types.PropertyToken)] = [];
-    private stable var transactionsEntries: [(Text, Types.TransactionRecord)] = [];
+    private stable var transactionsEntries: [(Types.TransactionId, Types.TransactionRecord)] = [];
     private stable var paymentRecordsEntries: [(Text, Types.PaymentRecord)] = [];
     private stable var userTokensEntries: [(Types.UserId, [Types.TokenId])] = [];
 
-    // ========== HASHMAPS (NO PUEDEN SER STABLE) ==========
+    // ========== HASHMAPS ==========
     private var users = HashMap.HashMap<Types.UserId, Types.UserProfile>(
         0, 
         Principal.equal, 
@@ -58,10 +60,10 @@ actor MagresteLabs {
         natHash
     );
 
-    private var transactions = HashMap.HashMap<Text, Types.TransactionRecord>(
+    private var transactions = HashMap.HashMap<Types.TransactionId, Types.TransactionRecord>(
         0,
-        Text.equal,
-        Text.hash
+        Nat.equal,
+        natHash
     );
 
     private var paymentRecords = HashMap.HashMap<Text, Types.PaymentRecord>(
@@ -78,12 +80,12 @@ actor MagresteLabs {
 
     // ========== FUNCIONES DE UPGRADE PARA PERSISTENCIA ==========
     system func preupgrade() {
-        usersEntries := users.entries() |> Iter.toArray(_);
-        propertiesEntries := properties.entries() |> Iter.toArray(_);
-        tokensEntries := tokens.entries() |> Iter.toArray(_);
-        transactionsEntries := transactions.entries() |> Iter.toArray(_);
-        paymentRecordsEntries := paymentRecords.entries() |> Iter.toArray(_);
-        userTokensEntries := userTokens.entries() |> Iter.toArray(_);
+        usersEntries := Iter.toArray(users.entries());
+        propertiesEntries := Iter.toArray(properties.entries());
+        tokensEntries := Iter.toArray(tokens.entries());
+        transactionsEntries := Iter.toArray(transactions.entries());
+        paymentRecordsEntries := Iter.toArray(paymentRecords.entries());
+        userTokensEntries := Iter.toArray(userTokens.entries());
     };
 
     system func postupgrade() {
@@ -108,11 +110,11 @@ actor MagresteLabs {
             natHash
         );
         
-        transactions := HashMap.fromIter<Text, Types.TransactionRecord>(
+        transactions := HashMap.fromIter<Types.TransactionId, Types.TransactionRecord>(
             transactionsEntries.vals(),
             transactionsEntries.size(),
-            Text.equal,
-            Text.hash
+            Nat.equal,
+            natHash
         );
         
         paymentRecords := HashMap.fromIter<Text, Types.PaymentRecord>(
@@ -140,12 +142,11 @@ actor MagresteLabs {
 
     // ========== FUNCIONES DE USUARIO ==========
     
-    public func createUser(request: Types.CreateUserRequest): async Types.CreateUserResponse {
+    public shared(msg) func createUser(request: Types.CreateUserRequest): async ?Types.UserProfile {
         let caller = msg.caller;
         
-        // Validar si el usuario ya existe
-        if (users.containsKey(caller)) {
-            return #err(#AlreadyInitialized);
+        if (containsKey(users, caller)) {
+            return null;
         };
 
         let user: Types.UserProfile = { 
@@ -161,82 +162,65 @@ actor MagresteLabs {
             totalInvested = 0.0;
             propertyTokensOwned = 0;
             utilityTokensOwned = 0;
-            role = #Investor; 
-            permissions = [#ViewPublicData]; 
-            country = request.country;
-            isActive = true;
         };
 
         users.put(caller, user);
-        #ok(user)
+        ?user
     };
 
-    public func getUser(userId: Types.UserId): async Types.GetUserResponse {
-        switch (users.get(userId)) {
-            case (?user) { #ok(user) };
-            case null { #err(#NotFound) }; 
-        }
+    public func getUser(userId: Types.UserId): async ?Types.UserProfile {
+        users.get(userId)
     };
 
     public query func getUserById(userId: Types.UserId): async ?Types.UserProfile { 
-        switch (users.get(userId)) {
-            case (?user) {
-                let updatedUser: Types.UserProfile = { 
-                    id = user.id;
-                    email = user.email;
-                    firstName = user.firstName;
-                    lastName = user.lastName;
-                    phone = user.phone;
-                    isVerified = user.isVerified;
-                    joinedAt = user.joinedAt;
-                    lastActivity = Time.now(); 
-                    kycStatus = user.kycStatus;
-                    totalInvested = calculateUserInvestment(userId);
-                    propertyTokensOwned = calculateUserTokens(userId);
-                    utilityTokensOwned = user.utilityTokensOwned;
-                    role = user.role;
-                    permissions = user.permissions;
-                    country = user.country;
-                    isActive = user.isActive;
-                };
-                ?updatedUser 
-            };
-            case null { null }; 
-        }
+        users.get(userId)
     };
 
     // ========== FUNCIONES DE PROPIEDADES ==========
     
-    public func createProperty(request: Types.CreatePropertyRequest, ownerId: Types.UserId): async Types.CreatePropertyResponse {
+    public shared(msg) func createProperty(request: Types.CreatePropertyRequest): async ?Types.Property {
+        let caller = msg.caller;
         let propertyId = nextPropertyId;
         nextPropertyId += 1;
 
-        // Validar que el ownerId existe como usuario registrado
-        if (not users.containsKey(ownerId)) {
-            return #err(#UserNotFound);
+        if (not containsKey(users, caller)) {
+            return null;
         };
 
         let property: Types.Property = {
             id = propertyId;
-            name = request.name; 
+            name = request.name;
             description = request.description;
             location = request.location;
             totalValue = request.totalValue;
-            pricePerToken = request.pricePerToken; 
+            pricePerToken = request.pricePerToken;
             totalTokens = request.totalTokens;
-            tokensIssued = request.totalTokens; 
-            tokensSold = 0; 
-            owner = ownerId;
-            isActive = true; 
+            tokensIssued = request.totalTokens;
+            tokensSold = 0;
+            owner = caller;
+            isActive = true;
             createdAt = Time.now();
-            imageUrls = request.imageUrls; 
-            expectedAnnualReturn = request.expectedAnnualReturn; 
-            propertyType = request.propertyType; 
-            squareMeters = request.squareMeters; 
+            imageUrls = request.imageUrls;
+            expectedAnnualReturn = request.expectedAnnualReturn;
+            propertyType = request.propertyType;
+            squareMeters = request.squareMeters;
         };
 
         properties.put(propertyId, property);
-        #ok(property)
+        ?property
+    };
+
+    public func getProperty(propertyId: Types.PropertyId): async ?Types.Property {
+        properties.get(propertyId)
+    };
+
+    public query func getPropertyById(propertyId: Types.PropertyId): async ?Types.Property {
+        properties.get(propertyId)
+    };
+
+    public func getAllProperties(): async [Types.Property] {
+        let propertyArray = Iter.toArray(properties.entries());
+        Array.map<(Types.PropertyId, Types.Property), Types.Property>(propertyArray, func(entry) = entry.1)
     };
 
     public func getPropertyAvailability(propertyId: Types.PropertyId): async (Types.PropertyId, ?Bool) {
@@ -246,210 +230,241 @@ actor MagresteLabs {
                 let isAvailable = availableTokens > 0 and property.isActive; 
                 (propertyId, ?isAvailable)
             };
-            case null { (propertyId, null) };
+            case null (propertyId, null);
         }
     };
 
     // ========== FUNCIONES DE TOKENS ==========
+    
     public func createTokens(propertyId: Types.PropertyId, quantity: Nat): async [Types.PropertyToken] {
-        var createdTokens: [Types.PropertyToken] = [];
-        
         switch (properties.get(propertyId)) {
             case (?property) {
-                if (property.tokensIssued + quantity > property.totalTokens) {
-                    Debug.print("Attempted to issue more tokens than totalTokens for property " # Nat.toText(propertyId));
-                    return []; 
-                };
-
-                for (i in Iter.range(0, quantity - 1)) {
+                var createdTokens: [Types.PropertyToken] = [];
+                var i = 0;
+                
+                while (i < quantity) {
                     let tokenId = nextTokenId;
                     nextTokenId += 1;
                     
                     let token: Types.PropertyToken = {
                         id = tokenId;
                         propertyId = propertyId;
-                        owner = Principal.anonymous(); 
-                        price = property.pricePerToken; 
-                        currentValue = property.pricePerToken; 
-                        canTransfer = false;
-                        transferEnabledAt = Time.now() + (30 * 24 * 60 * 60 * 1_000_000_000); 
+                        owner = property.owner;
+                        price = property.pricePerToken;
+                        currentValue = property.pricePerToken;
                         createdAt = Time.now();
+                        canTransfer = false;
+                        transferEnabledAt = Time.now() + (30 * 24 * 60 * 60 * 1_000_000_000);
                         metadata = null;
                     };
                     
                     tokens.put(tokenId, token);
                     createdTokens := Array.append(createdTokens, [token]);
+                    i += 1;
                 };
+                
+                createdTokens
+            };
+            case null [];
+        }
+    };
 
-                let updatedProperty: Types.Property = {
-                    property with 
-                    tokensIssued = property.tokensIssued + quantity
+    public func getToken(tokenId: Types.TokenId): async ?Types.PropertyToken {
+        tokens.get(tokenId)
+    };
+
+    public func getTokensByProperty(propertyId: Types.PropertyId): async [Types.PropertyToken] {
+        let tokenArray = Iter.toArray(tokens.entries());
+        let filteredTokens = Array.filter<(Types.TokenId, Types.PropertyToken)>(tokenArray, func(entry) = entry.1.propertyId == propertyId);
+        Array.map<(Types.TokenId, Types.PropertyToken), Types.PropertyToken>(filteredTokens, func(entry) = entry.1)
+    };
+
+    public func getTokensByUser(userId: Types.UserId): async [Types.PropertyToken] {
+        switch (userTokens.get(userId)) {
+            case (?tokenIds) {
+                var userTokensList: [Types.PropertyToken] = [];
+                for (tokenId in tokenIds.vals()) {
+                    switch (tokens.get(tokenId)) {
+                        case (?token) {
+                            userTokensList := Array.append(userTokensList, [token]);
+                        };
+                        case null {};
+                    };
                 };
-                properties.put(propertyId, updatedProperty); 
+                userTokensList
             };
-            case null {
-                Debug.print("Property not found for token creation: " # Nat.toText(propertyId));
-            };
-        };
-        createdTokens
+            case null [];
+        }
+    };
+
+    public func getAllTokens(): async [Types.PropertyToken] {
+        let tokenArray = Iter.toArray(tokens.entries());
+        Array.map<(Types.TokenId, Types.PropertyToken), Types.PropertyToken>(tokenArray, func(entry) = entry.1)
     };
 
     // ========== FUNCIONES DE TRANSACCIONES ==========
     
-    public func createTransaction(
-        propertyId: Types.PropertyId, 
-        quantity: Nat, 
-        price: Float,  
-        userId: Types.UserId 
-    ): async (Types.PropertyId, Nat, Float, Types.UserId) { 
-        let currentTransactionId = nextTransactionId;
-        nextTransactionId += 1; 
-
-        let transactionIdText = Nat.toText(currentTransactionId); 
-
-        let transaction: Types.TransactionRecord = { 
-            id = transactionIdText; 
-            fromUser = null; 
-            toUser = ?userId; 
-            propertyId = propertyId;
-            tokenId = null; 
-            amount = price * Float.fromInt(quantity); 
-            tokenAmount = quantity; 
-            transactionType = #Purchase; 
-            status = "pending"; 
-            timestamp = Time.now();
-            fees = 0.0; 
+    public shared(msg) func buyTokens(request: Types.BuyTokensRequest): async ?Types.TransactionRecord {
+        let caller = msg.caller;
+        
+        if (not containsKey(users, caller)) {
+            return null;
         };
         
-        transactions.put(transactionIdText, transaction);
-        (propertyId, quantity, price, userId) 
-    };
-
-    public func buyTokens(request: Types.BuyTokensRequest, userId: Types.UserId): async Types.BuyTokensResponse {
-        if (not users.containsKey(userId)) {
-            return #err(#UserNotFound);
-        };
-
         switch (properties.get(request.propertyId)) {
             case (?property) {
                 let availableTokens = property.totalTokens - property.tokensSold;
-                
                 if (availableTokens < request.quantity) {
-                    return #err(#InsufficientTokens); 
+                    return null;
                 };
                 
-                let totalCost = property.pricePerToken * Float.fromInt(request.quantity); 
-                if (totalCost > request.maxPrice) {
-                    return #err(#InvalidAmount); 
+                let totalPrice = Float.fromInt(request.quantity) * property.pricePerToken;
+                let transactionId = nextTransactionId;
+                nextTransactionId += 1;
+                
+                let transaction: Types.TransactionRecord = {
+                    id = transactionId;
+                    tokenId = null;
+                    propertyId = request.propertyId;
+                    fromUser = null;
+                    toUser = ?caller;
+                    price = totalPrice;
+                    fees = totalPrice * 0.025;
+                    timestamp = Time.now();
+                    transactionType = #Purchase;
                 };
                 
-                let (_, _, _, _) = await createTransaction(
-                    request.propertyId, 
-                    request.quantity, 
-                    property.pricePerToken, 
-                    userId
-                );
+                transactions.put(transactionId, transaction);
                 
-                var currentUsersTokens = switch (userTokens.get(userId)) {
-                    case (?tokensList) { tokensList };
-                    case null { [] };
-                };
-
-                for (i in Iter.range(0, request.quantity - 1)) {
-                    let tokenOpt = Iter.find(tokens.vals(), func (t: Types.PropertyToken): Bool { 
-                        t.propertyId == request.propertyId and t.owner == Principal.anonymous() 
-                    });
-
-                    switch (tokenOpt) {
-                        case (?tokenToAssign) {
-                            let updatedToken: Types.PropertyToken = {
-                                tokenToAssign with 
-                                owner = userId
-                            };
-                            tokens.put(tokenToAssign.id, updatedToken); 
-                            currentUsersTokens := Array.append(currentUsersTokens, [tokenToAssign.id]);
-                        };
-                        case null {
-                            Debug.print("No available token found for property " # Nat.toText(request.propertyId));
-                            return #err(#SystemError("Failed to assign all tokens."));
-                        };
-                    };
-                };
-                userTokens.put(userId, currentUsersTokens); 
-
-                let updatedProperty: Types.Property = {
-                    property with 
-                    tokensSold = property.tokensSold + request.quantity
+                let updatedProperty = {
+                    property with
+                    tokensSold = property.tokensSold + request.quantity;
                 };
                 properties.put(request.propertyId, updatedProperty);
-
-                let actualTransactionId = Nat.toText(nextTransactionId - 1); 
-                let transactionRecordOpt = transactions.get(actualTransactionId);
                 
-                let finalTransactionRecord = switch (transactionRecordOpt) {
-                    case (?tx) { tx };
-                    case null {
-                        {
-                            id = actualTransactionId;
-                            fromUser = null;
-                            toUser = ?userId;
-                            propertyId = request.propertyId;
-                            tokenId = null;
-                            amount = totalCost;
-                            tokenAmount = request.quantity;
-                            transactionType = #Purchase;
-                            status = "completed";
-                            timestamp = Time.now();
-                            fees = 0.0;
-                        }
+                switch (users.get(caller)) {
+                    case (?user) {
+                        let updatedUser = {
+                            user with
+                            totalInvested = user.totalInvested + totalPrice;
+                            propertyTokensOwned = user.propertyTokensOwned + request.quantity;
+                        };
+                        users.put(caller, updatedUser);
                     };
+                    case null {};
                 };
-
-                #ok({
-                    transaction = finalTransactionRecord; 
-                    newTokenBalance = currentUsersTokens.size(); 
-                })
+                
+                ?transaction
             };
-            case null { #err(#PropertyNotFound) }; 
+            case null null;
         }
     };
 
-    // ========== FUNCIONES DE PAGOS ==========
+    public func getTransaction(transactionId: Types.TransactionId): async ?Types.TransactionRecord {
+        transactions.get(transactionId)
+    };
+
+    public func getTransactionsByUser(userId: Types.UserId): async [Types.TransactionRecord] {
+        let transactionArray = Iter.toArray(transactions.entries());
+        let filteredTransactions = Array.filter<(Types.TransactionId, Types.TransactionRecord)>(transactionArray, func(entry) {
+            let transaction = entry.1;
+            switch (transaction.fromUser, transaction.toUser) {
+                case (?from, _) { Principal.equal(from, userId) };
+                case (_, ?to) { Principal.equal(to, userId) };
+                case (null, null) { false };
+            }
+        });
+        Array.map<(Types.TransactionId, Types.TransactionRecord), Types.TransactionRecord>(filteredTransactions, func(entry) = entry.1)
+    };
+
+    public func getAllTransactions(): async [Types.TransactionRecord] {
+        let transactionArray = Iter.toArray(transactions.entries());
+        Array.map<(Types.TransactionId, Types.TransactionRecord), Types.TransactionRecord>(transactionArray, func(entry) = entry.1)
+    };
+
+    // ========== FUNCIONES DE ESTADÍSTICAS ==========
     
-    public func createPayment(paymentData: Types.PaymentRecord): async Result.Result<Types.PaymentRecord, Types.SystemError> { 
-        // Validación básica
-        if (not properties.containsKey(paymentData.propertyId)) {
-            return #err(#PropertyNotFound);
-        };
-        if (not users.containsKey(paymentData.payeeId)) { 
-            return #err(#UserNotFound);
+    public func getSystemStats(): async Types.SystemStats {
+        var totalValueLocked: Float = 0.0;
+        for (property in properties.vals()) {
+            totalValueLocked += property.totalValue;
         };
         
-        let paymentId = paymentData.id; 
-        paymentRecords.put(paymentId, paymentData);
-        #ok(paymentData)
+        {
+            totalProperties = properties.size();
+            totalTokens = tokens.size();
+            totalTransactions = transactions.size();
+            activeUsers = users.size();
+            totalValueLocked = totalValueLocked;
+            systemUptime = Time.now();
+        }
     };
 
-    // ========== FUNCIONES AUXILIARES ==========
-    private func calculateUserInvestment(userId: Types.UserId): Float {
-        var totalInvestment: Float = 0.0;
-        for ((_, transaction) in transactions.entries()) {
-            switch (transaction.toUser) {
-                case (?user) {
-                    if (user == userId and transaction.transactionType == #Purchase) {
-                        totalInvestment += transaction.amount;
+    public func getPropertyStats(propertyId: Types.PropertyId): async ?Types.PropertyStats {
+        switch (properties.get(propertyId)) {
+            case (?property) {
+                var uniqueOwners = 0;
+                var ownersSet: [Types.UserId] = [];
+                
+                let tokenArray = Iter.toArray(tokens.entries());
+                let propertyTokens = Array.filter<(Types.TokenId, Types.PropertyToken)>(tokenArray, func(entry) = entry.1.propertyId == propertyId);
+                
+                for (tokenEntry in propertyTokens.vals()) {
+                    let owner = tokenEntry.1.owner;
+                    var found = false;
+                    for (existingOwner in ownersSet.vals()) {
+                        if (Principal.equal(existingOwner, owner)) {
+                            found := true;
+                        };
+                    };
+                    if (not found) {
+                        ownersSet := Array.append(ownersSet, [owner]);
+                        uniqueOwners += 1;
                     };
                 };
-                case null {};
+                
+                let averageOwnership = if (uniqueOwners > 0) {
+                    Float.fromInt(property.tokensSold) / Float.fromInt(uniqueOwners)
+                } else {
+                    0.0
+                };
+                
+                let utilizationRate = if (property.totalTokens > 0) {
+                    Float.fromInt(property.tokensSold) / Float.fromInt(property.totalTokens)
+                } else {
+                    0.0
+                };
+                
+                ?{
+                    totalTokens = property.totalTokens;
+                    tokensIssued = property.tokensIssued;
+                    tokensSold = property.tokensSold;
+                    uniqueOwners = uniqueOwners;
+                    averageOwnership = averageOwnership;
+                    totalValueLocked = property.totalValue;
+                    utilizationRate = utilizationRate;
+                    currentValue = property.totalValue;
+                }
             };
-        };
-        totalInvestment
+            case null null;
+        }
     };
 
-    private func calculateUserTokens(userId: Types.UserId): Nat {
-        switch (userTokens.get(userId)) {
-            case (?tokensList) { tokensList.size() };
-            case null { 0 };
-        }
+    // ========== FUNCIONES DE UTILIDAD ==========
+    
+    public func getUserCount(): async Nat {
+        users.size()
+    };
+
+    public func getPropertyCount(): async Nat {
+        properties.size()
+    };
+
+    public func getTokenCount(): async Nat {
+        tokens.size()
+    };
+
+    public func getTransactionCount(): async Nat {
+        transactions.size()
     };
 }

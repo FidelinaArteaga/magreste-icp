@@ -4,14 +4,15 @@
       "main": "src/magreste_labs_backend/main.mo",
       "type": "motoko"
     },
-    "frontend": {
+    "magreste_labs_frontend": {
       "dependencies": [
         "magreste_labs_backend"
       ],
       "source": [
-        "src/frontend/dist"
+        "magreste_labs_frontend/dist"
       ],
       "type": "assets"
+
     }
   },
   "defaults": {
