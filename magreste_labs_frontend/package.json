@@ -1,11 +1,8 @@
 
 {
-  "name": "magreste-labs-root",
-  "version": "1.0.0",
-  "scripts": {
-    "build": "cd magreste_labs_frontend && npm run build"
-  }
-}
+  "name": "magreste-labs",
+  "version": "0.1.0",
+  "private": true,
   "dependencies": {
     "@dfinity/agent": "^1.0.1",
     "@dfinity/auth-client": "^1.0.1",
@@ -36,15 +33,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "predeploy": "npm run build",
-    "deploy-local": "dfx deploy --network local",
-    "deploy-ic": "dfx deploy --network ic",
-    "generate": "dfx generate backend",
-    "start-local": "dfx start --clean",
-    "init-properties": "dfx canister call backend initializeSampleProperties",
-    "canister-status": "dfx canister status backend",
-    "canister-logs": "dfx canister logs backend"
+    "eject": "react-scripts eject"
   },
   "eslintConfig": {
     "extends": [

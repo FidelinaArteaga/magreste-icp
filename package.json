@@ -1,34 +1,8 @@
-{
-  "canisters": {
-    "magreste_labs_backend": {
-      "main": "src/magreste_labs_backend/main.mo",
-      "type": "motoko"
-    },
-    "magreste_labs_frontend": {
-      "dependencies": [
-        "magreste_labs_backend"
-      ],
-      "source": [
-        "magreste_labs_frontend/dist"
-      ],
-      "type": "assets"
 
-    }
-  },
-  "defaults": {
-    "build": {
-      "packtool": ""
-    }
-  },
-  "version": 1,
-  "devDependencies": {
-    "prettier": "^3.0.0-alpha.6"
-  },
-  "dependencies": {
-    "@dfinity/agent": "^2.4.1",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-router-dom": "^7.6.1",
-    "vite": "^6.3.5"
+{
+  "name": "magreste-labs-root",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd magreste_labs_frontend && npm run build"
   }
 }
